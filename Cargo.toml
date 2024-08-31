@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "oep",
+]
+resolver = "2"

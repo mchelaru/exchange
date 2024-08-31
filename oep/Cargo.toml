@@ -1,0 +1,9 @@
+[package]
+name = "oep"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sha2 = "0.10.7"
+socket2 = "0.5.3"
+anyhow = "1.0.81"
