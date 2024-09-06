@@ -85,6 +85,13 @@ impl Connection {
         Ok(())
     }
 
+    fn send_with_header(&self, header_bytes: &[u8], bytes: &[u8]) -> Result<usize, std::io::Error> {
+        self.socket
+            .as_ref()
+            .unwrap()
+            .send([header_bytes, bytes].concat().as_slice())
+    }
+
     pub fn login(
         &mut self,
         participant: u64,
@@ -98,8 +105,7 @@ impl Connection {
         let mut msg = Login::new(participant, session_id, gateway_id, username);
         msg.hash_text_to_password(password);
         let header = OepHeader::new(OEP_VERSION, MsgType::Login.into(), LOGIN_SIZE.try_into()?);
-        self.socket.as_ref().unwrap().send(&header.encode())?;
-        self.socket.as_ref().unwrap().send(&msg.encode())?;
+        self.send_with_header(&header.encode(), &msg.encode())?;
         self.state.advance();
 
         Ok(())
@@ -139,14 +145,12 @@ impl Connection {
                     MsgType::NewOrder.into(),
                     NEWORDER_SIZE.try_into()?,
                 );
-                self.socket.as_ref().unwrap().send(&header.encode())?;
-                self.socket.as_ref().unwrap().send(&order.encode())?;
+                self.send_with_header(&header.encode(), &order.encode())?;
             }
             MessageTypes::Cancel(order) => {
                 let header =
                     OepHeader::new(OEP_VERSION, MsgType::Cancel.into(), CANCEL_SIZE.try_into()?);
-                self.socket.as_ref().unwrap().send(&header.encode())?;
-                self.socket.as_ref().unwrap().send(&order.encode())?;
+                self.send_with_header(&header.encode(), &order.encode())?;
             }
             MessageTypes::ExecutionReport(order) => {
                 let header = OepHeader::new(
@@ -154,14 +158,12 @@ impl Connection {
                     MsgType::ExecutionReport.into(),
                     EXECUTIONREPORT_SIZE.try_into()?,
                 );
-                self.socket.as_ref().unwrap().send(&header.encode())?;
-                self.socket.as_ref().unwrap().send(&order.encode())?;
+                self.send_with_header(&header.encode(), &order.encode())?;
             }
             MessageTypes::Modify(order) => {
                 let header =
                     OepHeader::new(OEP_VERSION, MsgType::Modify.into(), MODIFY_SIZE.try_into()?);
-                self.socket.as_ref().unwrap().send(&header.encode())?;
-                self.socket.as_ref().unwrap().send(&order.encode())?;
+                self.send_with_header(&header.encode(), &order.encode())?;
             }
             MessageTypes::Trade(_) => bail!("Can't send trades"),
         }
@@ -169,12 +171,9 @@ impl Connection {
         Ok(())
     }
 
-    /**
-     * Receives messages from the gateway - until now it's implmented to
-     * receive just execution reports.
-     * Blocks for at most twice the duration
-     *
-     */
+    // Receives messages from the gateway - until now it's implmented to
+    // receive just execution reports.
+    // Blocks for at most twice the duration
     #[must_use]
     pub fn recv_message(&self, duration: Duration) -> Option<MessageTypes> {
         assert_eq!(ConnectionState::Logged, self.state);
@@ -213,5 +212,112 @@ impl Connection {
             }
             Err(_) => return None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::neworder::NewOrder;
+    use std::io::Write;
+    use std::net::TcpListener;
+    use std::thread;
+
+    fn setup_mock_server() -> TcpListener {
+        TcpListener::bind("127.0.0.1:0").unwrap()
+    }
+
+    #[test]
+    fn test_connect() {
+        let server = setup_mock_server();
+        let server_addr = server.local_addr().unwrap();
+
+        let mut connection = Connection::default();
+        assert!(connection
+            .connect(&server_addr.ip().to_string(), server_addr.port())
+            .is_ok());
+        assert_eq!(connection.state, ConnectionState::Connected);
+    }
+
+    #[test]
+    fn test_login() {
+        let server = setup_mock_server();
+        let server_addr = server.local_addr().unwrap();
+
+        let mut connection = Connection::default();
+        connection
+            .connect(&server_addr.ip().to_string(), server_addr.port())
+            .unwrap();
+
+        assert!(connection
+            .login(1234, 5678, 1, "username", "password")
+            .is_ok());
+        assert_eq!(connection.state, ConnectionState::LoginSent);
+    }
+
+    #[test]
+    fn test_wait_for_login() {
+        let server = setup_mock_server();
+        let server_addr = server.local_addr().unwrap();
+
+        thread::spawn(move || {
+            let (mut stream, _) = server.accept().unwrap();
+            let login_response = Login::new(1234, 5678, 1, "username").encode();
+            let header =
+                OepHeader::new(OEP_VERSION, MsgType::Login.into(), LOGIN_SIZE as u32).encode();
+            stream
+                .write_all(
+                    [&header as &[u8], &login_response as &[u8]]
+                        .concat()
+                        .as_slice(),
+                )
+                .unwrap();
+        });
+
+        let mut connection = Connection::default();
+        connection
+            .connect(&server_addr.ip().to_string(), server_addr.port())
+            .unwrap();
+        connection
+            .login(1234, 5678, 1, "username", "password")
+            .unwrap();
+
+        let r = connection.wait_for_login(Some(1000));
+        if r.is_err() {
+            eprintln!("{:#?}", r);
+        }
+        assert!(r.is_ok());
+        assert_eq!(connection.state, ConnectionState::Logged);
+    }
+
+    #[test]
+    fn test_send_message() {
+        let server = setup_mock_server();
+        let server_addr = server.local_addr().unwrap();
+
+        let mut connection = Connection::default();
+        connection
+            .connect(&server_addr.ip().to_string(), server_addr.port())
+            .unwrap();
+        connection
+            .login(1234, 5678, 1, "username", "password")
+            .unwrap();
+        connection.state = ConnectionState::Logged; // Simulate successful login
+
+        let new_order = NewOrder {
+            client_order_id: 1,
+            participant: 1234,
+            book_id: 1,
+            quantity: 100,
+            price: 1000,
+            order_type: 1,
+            side: 1,
+            gateway_id: 1,
+            session_id: 5678,
+        };
+
+        assert!(connection
+            .send_message(MessageTypes::NewOrder(new_order))
+            .is_ok());
     }
 }
