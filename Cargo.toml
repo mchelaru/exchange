@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "instruments",
     "oep",
 ]
 resolver = "2"
