@@ -3,5 +3,6 @@
 members = [
     "instruments",
     "oep",
+    "utils",
 ]
 resolver = "2"
