@@ -1,0 +1,16 @@
+[package]
+name = "dbhook"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = ["postgres"]
+
+[dependencies]
+anyhow = "1.0.81"
+postgres = { version = "0.19.7", optional = true }
+instruments = { path = "../instruments" }
+oep = { path = "../oep" }
+duckdb = { version = "1.0.0", features = ["bundled"], optional = true }
