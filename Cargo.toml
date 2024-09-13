@@ -2,6 +2,7 @@
 
 members = [
     "dbhook",
+    "disseminator",
     "instruments",
     "order",
     "oep",
