@@ -4,6 +4,7 @@ members = [
     "dbhook",
     "disseminator",
     "instruments",
+    "market",
     "order",
     "oep",
     "utils",
