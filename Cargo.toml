@@ -1,6 +1,8 @@
 [workspace]
 
 members = [
+    "clearing_connection",
+    "clearing_engine",
     "dbhook",
     "disseminator",
     "instruments",

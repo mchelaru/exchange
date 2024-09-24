@@ -1,0 +1,17 @@
+[package]
+name = "clearing_engine"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+polling = "3.4.0"
+socket2 = "0.5.3"
+configparser = "3.0.4"
+clearing_connection = { path = "../clearing_connection" }
+dbhook = { path = "../dbhook" }
+disseminator = { path = "../disseminator" }
+instruments = { path = "../instruments" }
+market = { path = "../market" }
+utils = { path = "../utils" }
