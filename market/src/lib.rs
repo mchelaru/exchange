@@ -6,7 +6,7 @@ use order::{Order, OrderState, OrderType, Side};
 
 #[derive(Debug, Clone)]
 pub struct Market {
-    pub instrument: Rc<RefCell<Instrument>>,
+    instrument: Rc<RefCell<Instrument>>,
     bids: VecDeque<Order>,
     asks: VecDeque<Order>,
     order_id: u64,
@@ -63,6 +63,10 @@ impl Market {
 
     fn publish_new_order(&self, o: &Order) {
         self.disseminator.borrow().send_new_order(o).unwrap();
+    }
+
+    fn publish_modified_order(&self, o: &Order) {
+        self.disseminator.borrow().send_modify_order(o).unwrap();
     }
 
     fn publish_trade(&self, trade: &oep::trade::Trade) {
@@ -219,9 +223,16 @@ impl Market {
                         && x.order_type == o.order_type
                 }) {
                     Some(index) => {
-                        self.publish_cancel_order(&$side[index]);
-                        $side.remove(index);
-                        self.add_order(o)
+                        if o.price == $side[index].price {
+                            // change the quantity only
+                            $side[index].quantity = o.quantity;
+                            self.publish_modified_order(&$side[index]);
+                            (OrderState::Modified, $side[index].get_id())
+                        } else {
+                            self.publish_cancel_order(&$side[index]);
+                            $side.remove(index);
+                            self.add_order(o)
+                        }
                     }
                     None => return (OrderState::Rejected, 0),
                 }
@@ -269,6 +280,22 @@ impl Market {
         }
     }
 
+    pub fn cancel_all_orders_for_session(
+        &mut self,
+        participant: u64,
+        gateway_id: u8,
+        session_id: u32,
+    ) {
+        self.bids.retain(|o| {
+            o.participant != participant || o.gateway_id != gateway_id || o.session_id != session_id
+        });
+        self.asks.retain(|o| {
+            o.participant != participant || o.gateway_id != gateway_id || o.session_id != session_id
+        });
+        self.bids_ops += 3;
+        self.asks_ops += 3;
+    }
+
     pub fn generate_bids(&self) -> Vec<&Order> {
         self.bids.iter().collect()
     }
@@ -282,6 +309,10 @@ impl Market {
         self.instrument
             .borrow_mut()
             .set_state(InstrumentState::Trading);
+    }
+
+    pub fn get_instrument(&self) -> Rc<RefCell<Instrument>> {
+        self.instrument.clone()
     }
 
     pub fn get_state(&self) -> InstrumentState {
@@ -1327,7 +1358,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "FIXME: this is known to fail due to the drop/insert mechanism that we use in modify"]
     fn modify_quantity_doesnt_change_position() {
         let i = Rc::new(RefCell::new(Instrument::new_fast(
             500,
@@ -1367,7 +1397,7 @@ mod test {
 
         // modify the first order quantity should keep it in the first position
         o1.quantity = 50;
-        assert_eq!(OrderState::Inserted, target.modify_order(o1).0);
+        assert_eq!(OrderState::Modified, target.modify_order(o1).0);
 
         let bids = target.generate_bids();
         assert_eq!(2, bids.len());
@@ -1427,10 +1457,41 @@ mod test {
 
         assert_eq!(OrderState::Inserted, target.add_order(o1.clone()).0);
         o1.set_id(target.get_order_id());
+        o1.price += 1;
         assert_eq!(OrderState::Inserted, target.modify_order(o1).0);
 
         assert_eq!(1, disseminator.borrow().cancels.borrow().len());
         assert_eq!(2, disseminator.borrow().new_orders.borrow().len());
+    }
+
+    #[test]
+    fn modify_quantity_publish_modify() {
+        let i = Rc::new(RefCell::new(Instrument::new_fast(
+            500,
+            InstrumentType::Share,
+        )));
+        i.borrow_mut().set_percentage_bands(10);
+
+        let mut o1 = Order::new(
+            1000,
+            i.clone(),
+            1000,
+            100,
+            Side::Bid,
+            OrderType::Day,
+            100,
+            2000,
+        );
+        let disseminator = Rc::new(RefCell::new(MockDisseminator::new()));
+        let mut target = Market::new(i.clone(), disseminator.clone());
+        target.set_state_trading();
+
+        assert_eq!(OrderState::Inserted, target.add_order(o1.clone()).0);
+        o1.set_id(target.get_order_id());
+        o1.quantity += 100;
+        assert_eq!(OrderState::Modified, target.modify_order(o1).0);
+
+        assert_eq!(1, disseminator.borrow().modifies.borrow().len());
     }
 
     #[test]
@@ -1476,5 +1537,90 @@ mod test {
         assert_eq!(3, r.unwrap());
         assert_eq!(1, disseminator.borrow().instrument_info.borrow().len());
         assert_eq!(2, disseminator.borrow().market_orders.borrow().len());
+    }
+
+    #[test]
+    fn cancel_all_orders_for_session() {
+        let i = Rc::new(RefCell::new(Instrument::new_fast(
+            500,
+            InstrumentType::Share,
+        )));
+        i.borrow_mut().set_percentage_bands(10);
+
+        let o1 = Order::new(
+            1000,
+            i.clone(),
+            1000,
+            100,
+            Side::Bid,
+            OrderType::Day,
+            100,
+            2000,
+        );
+        let o2 = Order::new(
+            1000,
+            i.clone(),
+            990,
+            200,
+            Side::Bid,
+            OrderType::Day,
+            100,
+            2000,
+        );
+        let o3 = Order::new(
+            1001,
+            i.clone(),
+            1010,
+            300,
+            Side::Ask,
+            OrderType::Day,
+            100,
+            2001,
+        );
+        let o4 = Order::new(
+            1001,
+            i.clone(),
+            1020,
+            400,
+            Side::Ask,
+            OrderType::Day,
+            101,
+            2002,
+        );
+
+        let disseminator = Rc::new(RefCell::new(MockDisseminator::new()));
+        let mut target = Market::new(i.clone(), disseminator.clone());
+        target.set_state_trading();
+
+        assert_eq!(OrderState::Inserted, target.add_order(o1.clone()).0);
+        assert_eq!(OrderState::Inserted, target.add_order(o2.clone()).0);
+        assert_eq!(OrderState::Inserted, target.add_order(o3.clone()).0);
+        assert_eq!(OrderState::Inserted, target.add_order(o4.clone()).0);
+
+        // Verify initial state
+        assert_eq!(2, target.generate_bids().len());
+        assert_eq!(2, target.generate_asks().len());
+
+        // Cancel all orders for participant 1000, gateway 100, session 2000
+        target.cancel_all_orders_for_session(1000, 100, 2000);
+
+        // Verify state after cancellation
+        let bids = target.generate_bids();
+        let asks = target.generate_asks();
+
+        assert_eq!(0, bids.len());
+        assert_eq!(2, asks.len());
+
+        // Verify remaining orders
+        assert_eq!(1001, asks[0].participant);
+        assert_eq!(1010, asks[0].price);
+        assert_eq!(300, asks[0].quantity);
+        assert_eq!(1001, asks[1].participant);
+        assert_eq!(1020, asks[1].price);
+        assert_eq!(400, asks[1].quantity);
+
+        // Verify operation counters
+        assert_eq!(5, target.bids_ops);
+        assert_eq!(5, target.asks_ops);
     }
 }

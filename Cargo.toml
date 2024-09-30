@@ -6,6 +6,7 @@ members = [
     "dbhook",
     "disseminator",
     "instruments",
+    "matching_engine",
     "market",
     "order",
     "oep",

@@ -1,6 +1,6 @@
 use crate::{
     cancel::CANCEL_SIZE, execution_report::EXECUTIONREPORT_SIZE, login::LOGIN_SIZE,
-    modify::MODIFY_SIZE, neworder::NEWORDER_SIZE, trade::TRADE_SIZE,
+    modify::MODIFY_SIZE, neworder::NEWORDER_SIZE, sessioninfo::SESSIONINFO_SIZE, trade::TRADE_SIZE,
 };
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -11,6 +11,7 @@ pub enum MsgType {
     ExecutionReport,
     Login,
     Trade,
+    SessionInfo,
     Unknown,
 }
 
@@ -23,6 +24,7 @@ impl Into<u16> for MsgType {
             MsgType::ExecutionReport => 3,
             MsgType::Login => 4,
             // MsgType::Trade intentionally left out
+            // Msg::SessionInfo intentionall left out
             _ => panic!("Unknown message type"),
         }
     }
@@ -38,6 +40,7 @@ pub trait OepMessage {
             MsgType::Modify => MODIFY_SIZE,
             MsgType::NewOrder => NEWORDER_SIZE,
             MsgType::Trade => TRADE_SIZE,
+            MsgType::SessionInfo => SESSIONINFO_SIZE,
             MsgType::Unknown => 1024,
         }
     }

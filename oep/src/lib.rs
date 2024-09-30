@@ -16,6 +16,7 @@ pub mod login;
 pub mod modify;
 pub mod neworder;
 pub mod oep_message;
+pub mod sessioninfo;
 pub mod trade;
 
 mod tests;
@@ -103,7 +104,7 @@ pub fn oep_decode(buffer: &[u8]) -> Result<Box<dyn OepMessage>, std::io::Error> 
             std::io::ErrorKind::Unsupported,
             "Trade cannot be sent on this message pipe",
         )),
-        MsgType::Unknown => Err(std::io::Error::new(
+        _ => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "Unknown message type",
         )),

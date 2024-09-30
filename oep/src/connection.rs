@@ -190,20 +190,21 @@ impl Connection {
                 match self.socket.as_ref().unwrap().read_exact(&mut v) {
                     Ok(_) => match oep_decode(&v) {
                         Ok(m) => match m.message_type() {
-                            crate::oep_message::MsgType::NewOrder => todo!(),
-                            crate::oep_message::MsgType::Modify => todo!(),
-                            crate::oep_message::MsgType::Cancel => todo!(),
+                            MsgType::NewOrder => todo!(),
+                            MsgType::Modify => todo!(),
+                            MsgType::Cancel => todo!(),
                             // we only care about execution reports for now
-                            crate::oep_message::MsgType::ExecutionReport => {
+                            MsgType::ExecutionReport => {
                                 return Some(MessageTypes::ExecutionReport(
                                     *m.as_any()
                                         .downcast_ref::<crate::execution_report::ExecutionReport>()
                                         .expect("Bad pointer conversion"),
                                 ))
                             }
-                            crate::oep_message::MsgType::Login => todo!(),
-                            crate::oep_message::MsgType::Trade => todo!(),
-                            crate::oep_message::MsgType::Unknown => todo!(),
+                            MsgType::Login => todo!(),
+                            MsgType::Trade => todo!(),
+                            MsgType::Unknown => todo!(),
+                            MsgType::SessionInfo => todo!(),
                         },
                         Err(_) => return None,
                     },

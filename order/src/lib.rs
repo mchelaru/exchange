@@ -131,6 +131,7 @@ impl Order {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OrderState {
     Inserted,
+    Modified,
     Cancelled,
     Rejected,
     Traded,
@@ -141,10 +142,11 @@ impl Into<u8> for OrderState {
     fn into(self) -> u8 {
         match self {
             OrderState::Inserted => 0,
-            OrderState::Cancelled => 1,
-            OrderState::Rejected => 2,
-            OrderState::Traded => 3,
-            OrderState::PartiallyTraded => 4,
+            OrderState::Modified => 1,
+            OrderState::Cancelled => 2,
+            OrderState::Rejected => 3,
+            OrderState::Traded => 4,
+            OrderState::PartiallyTraded => 5,
         }
     }
 }

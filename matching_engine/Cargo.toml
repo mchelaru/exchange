@@ -1,0 +1,20 @@
+[package]
+name = "matching_engine"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.81"
+configparser = "3.0.4"
+socket2 = "0.5.3"
+polling = "3.4.0"
+usdt = { version = "0.5.0", optional = true }
+disseminator = { path = "../disseminator" }
+instruments = { path = "../instruments" }
+clearing_connection = { path = "../clearing_connection" }
+market = { path = "../market" }
+order = { path = "../order" }
+utils = { path = "../utils" }
+oep = { path = "../oep" }
