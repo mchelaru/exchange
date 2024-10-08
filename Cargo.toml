@@ -5,6 +5,7 @@ members = [
     "clearing_engine",
     "dbhook",
     "disseminator",
+    "gateway",
     "instruments",
     "matching_engine",
     "market",

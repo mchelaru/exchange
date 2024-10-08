@@ -1,0 +1,16 @@
+[package]
+name = "gateway"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+socket2 = { version = "0.5.3", features = ["all"] }
+polling = "3.4.0"
+anyhow = "1.0.81"
+configparser = "3.0.4"
+dbhook = { path = "../dbhook" }
+oep = { path = "../oep" }
+order = { path = "../order" }
+utils = { path = "../utils" }
