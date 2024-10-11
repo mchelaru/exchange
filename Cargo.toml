@@ -3,6 +3,7 @@
 members = [
     "clearing_connection",
     "clearing_engine",
+    "client",
     "dbhook",
     "disseminator",
     "gateway",

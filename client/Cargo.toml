@@ -1,0 +1,17 @@
+[package]
+name = "gateway-client"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.81"
+configparser = "3.0.4"
+socket2 = "0.5.3"
+dialoguer = { version = "0.11.0", features = ["editor", "fuzzy-select", "history", "completion"] }
+dbhook = { path = "../dbhook" }
+instruments = { path = "../instruments" }
+oep = { path = "../oep" }
+order = { path = "../order" }
+utils = { path = "../utils" }
