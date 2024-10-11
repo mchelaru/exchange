@@ -76,6 +76,8 @@ impl GenericInstrumentList for InstrumentList {
             .insert(id, Rc::new(RefCell::new(Instrument::new_fast(id, itype))));
     }
 
+    /// adds an instrument to the list.
+    /// If the ID is already present, then the previous entry is replaced
     fn add_instrument(&mut self, i: Instrument) -> Rc<RefCell<Instrument>> {
         let id = i.get_id();
         match self.contains(id) {
