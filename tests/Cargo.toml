@@ -1,0 +1,19 @@
+[package]
+name = "tests"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.81"
+
+dbhook = { path = "../dbhook" }
+gateway = { path = "../gateway" }
+instruments = { path = "../instruments" }
+order = { path = "../order" }
+disseminator = { path = "../disseminator" }
+oep = { path = "../oep" }
+market = { path = "../market" }
+matching_engine = { path = "../matching_engine" }
+utils = { path = "../utils" }

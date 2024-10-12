@@ -12,6 +12,7 @@ members = [
     "market",
     "order",
     "oep",
+    "tests",
     "utils",
 ]
 resolver = "2"
