@@ -11,7 +11,7 @@ pub enum MsgType {
     ExecutionReport,
     Login,
     Trade,
-    SessionInfo,
+    SessionNotification, // sent by GW to ME, in order to inform the latter about a session exception
     Unknown,
 }
 
@@ -30,6 +30,21 @@ impl Into<u16> for MsgType {
     }
 }
 
+impl From<u16> for MsgType {
+    fn from(value: u16) -> Self {
+        match value {
+            0 => MsgType::NewOrder,
+            1 => MsgType::Modify,
+            2 => MsgType::Cancel,
+            3 => MsgType::ExecutionReport,
+            4 => MsgType::Login,
+            5 => MsgType::Trade,
+            6 => MsgType::SessionNotification,
+            _ => MsgType::Unknown,
+        }
+    }
+}
+
 pub trait OepMessage {
     fn message_type(&self) -> MsgType;
     fn message_len(&self) -> usize {
@@ -40,7 +55,7 @@ pub trait OepMessage {
             MsgType::Modify => MODIFY_SIZE,
             MsgType::NewOrder => NEWORDER_SIZE,
             MsgType::Trade => TRADE_SIZE,
-            MsgType::SessionInfo => SESSIONINFO_SIZE,
+            MsgType::SessionNotification => SESSIONINFO_SIZE,
             MsgType::Unknown => 1024,
         }
     }

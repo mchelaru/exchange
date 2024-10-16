@@ -204,7 +204,7 @@ impl Connection {
                             MsgType::Login => todo!(),
                             MsgType::Trade => todo!(),
                             MsgType::Unknown => todo!(),
-                            MsgType::SessionInfo => todo!(),
+                            MsgType::SessionNotification => todo!(),
                         },
                         Err(_) => return None,
                     },

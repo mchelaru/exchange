@@ -161,15 +161,15 @@ pub fn receive_and_prepare_relay_message<TSocket: Read + Write + AsFd + AsSource
         }
         MsgType::Cancel => {
             check_session!();
-            relay_message!(message, Cancel, 2);
+            relay_message!(message, Cancel, message.message_type());
         }
         MsgType::Modify => {
             check_session!();
-            relay_message!(message, Modify, 1);
+            relay_message!(message, Modify, message.message_type());
         }
         MsgType::NewOrder => {
             check_session!();
-            relay_message!(message, NewOrder, 0);
+            relay_message!(message, NewOrder, message.message_type());
         }
         MsgType::ExecutionReport => {
             eprintln!(

@@ -4,7 +4,7 @@ pub(crate) mod test_exchange {
     use disseminator::mockdisseminator::MockDisseminator;
     use instruments::instrument::{Instrument, InstrumentState, InstrumentType};
     use market::Market;
-    use matching_engine::processor;
+    use matching_engine::processor::{self, MessageWrapper};
     use std::{
         cell::RefCell,
         io::{Read, Write},
@@ -12,7 +12,13 @@ pub(crate) mod test_exchange {
     };
 
     use gateway::messages::{receive_and_prepare_relay_message, ConnectedSession};
-    use oep::{execution_report::ExecutionReport, login::Login, oep_message::OepMessage};
+    use oep::{
+        decoder::Decoder,
+        execution_report::ExecutionReport,
+        login::Login,
+        oep_message::{MsgType, OepMessage},
+        sessioninfo::SessionInfo,
+    };
     use utils::network::MockSocket;
     pub(crate) struct TestExchange {
         pub client_socket: Rc<RefCell<MockSocket>>,
@@ -66,7 +72,7 @@ pub(crate) mod test_exchange {
                 .borrow_mut()
                 .connect_output(r.matching_engine_socket.clone());
 
-            return r;
+            r
         }
 
         pub(crate) fn login(&mut self) -> Result<ConnectedSession<MockSocket>> {
@@ -101,15 +107,44 @@ pub(crate) mod test_exchange {
             result
         }
 
-        pub(crate) fn process_order_at_matching_engine(&mut self) -> ExecutionReport {
+        pub(crate) fn disconnect_session(
+            &mut self,
+            participant: u64,
+            session_id: u32,
+            gateway_id: u8,
+        ) {
+            let mut buffer: Vec<u8> = vec![];
+            buffer.extend_from_slice(&[MsgType::SessionNotification as u8, 0, 0, 0]);
+            buffer
+                .extend_from_slice(&SessionInfo::new(participant, session_id, gateway_id).encode());
+
+            self.gateway_sender.borrow_mut().write(&buffer).unwrap();
+            self.client_socket.borrow_mut().close();
+        }
+
+        pub(crate) fn process_order_at_matching_engine(&mut self) -> Vec<ExecutionReport> {
             let mut buf = [0; 2000];
             let r = self.matching_engine_socket.borrow_mut().read(&mut buf);
             assert!(r.is_ok());
             let r = r.unwrap();
             assert!(r > 4);
-            let (msg, book_id) = processor::decode_message(&buf[0..r]).unwrap();
-            assert_eq!(Self::INSTRUMENT_ID, book_id);
-            processor::process_message(&mut self.market, msg)
+            let (msg, book_id) =
+                processor::decode_message(&buf[0..r]).unwrap_or_else(|e| panic!("{e:#?}"));
+            let mut expect_exactly_one_execution_report = true;
+            match msg {
+                MessageWrapper::KillSession(_) => {
+                    assert_eq!(0, book_id);
+                    expect_exactly_one_execution_report = false;
+                }
+                _ => assert_eq!(Self::INSTRUMENT_ID, book_id),
+            }
+
+            let ereports = processor::process_message(&mut self.market, msg);
+            if expect_exactly_one_execution_report {
+                assert_eq!(1, ereports.len());
+            }
+
+            ereports
         }
     }
 }

@@ -163,19 +163,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                         match msg_result {
                             Ok((msg, book_id)) => match markets.borrow_mut().get_mut(&book_id) {
                                 Some(market) => {
-                                    let ereport =
+                                    let ereports =
                                         timeit!(process, processor::process_message(market, msg));
-                                    timeit!(
-                                        publish,
-                                        internal_publisher_socket.write(
-                                            [
-                                                execution_report_header.as_slice(),
-                                                ereport.encode().as_slice(),
-                                            ]
-                                            .concat()
-                                            .as_slice(),
-                                        )?
-                                    );
+                                    for ereport in &ereports {
+                                        timeit!(
+                                            publish,
+                                            internal_publisher_socket.write(
+                                                [
+                                                    execution_report_header.as_slice(),
+                                                    ereport.encode().as_slice(),
+                                                ]
+                                                .concat()
+                                                .as_slice(),
+                                            )?
+                                        );
+                                    }
                                 }
                                 None => {}
                             },

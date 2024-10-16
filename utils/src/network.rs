@@ -38,6 +38,8 @@ pub struct MockSocket {
     pub write_buffer: RefCell<Vec<u8>>,
     // if this is set, a write call will append to the target read_buffer
     pub output: Option<Rc<RefCell<MockSocket>>>,
+    // if this is set then read returns UnexpectedEof and write returns UnexpectedEof
+    pub closed: bool,
 }
 
 impl MockSocket {
@@ -46,6 +48,7 @@ impl MockSocket {
             read_buffer: RefCell::new(vec![]),
             write_buffer: RefCell::new(vec![]),
             output: None,
+            closed: false,
         }
     }
 
@@ -58,24 +61,34 @@ impl MockSocket {
         self.output = Some(output);
     }
 
-    /// just a wrapper for write()
-    pub fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.write(buf)
+    ///
+    /// Closes the MockSocket. No more read or writes are allowed and
+    /// subsequent calls to them will return Err(UnexpectedEof)
+    ///
+    pub fn close(&mut self) {
+        self.closed = true;
     }
 }
 
 impl Read for MockSocket {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let r = std::cmp::min(self.read_buffer.borrow().len(), buf.len());
-        buf[..r].clone_from_slice(&self.read_buffer.borrow().as_slice()[..r]);
-        self.read_buffer.borrow_mut().drain(..r);
+        if self.closed {
+            Err(std::io::ErrorKind::UnexpectedEof.into())
+        } else {
+            let r = std::cmp::min(self.read_buffer.borrow().len(), buf.len());
+            buf[..r].clone_from_slice(&self.read_buffer.borrow().as_slice()[..r]);
+            self.read_buffer.borrow_mut().drain(..r);
 
-        Ok(r)
+            Ok(r)
+        }
     }
 }
 
 impl Write for MockSocket {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.closed {
+            return Err(std::io::ErrorKind::UnexpectedEof.into());
+        }
         if self.output.is_none() {
             self.write_buffer.borrow_mut().append(&mut buf.to_vec());
         } else {

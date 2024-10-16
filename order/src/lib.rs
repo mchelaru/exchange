@@ -150,3 +150,17 @@ impl Into<u8> for OrderState {
         }
     }
 }
+
+impl From<u8> for OrderState {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => OrderState::Inserted,
+            1 => OrderState::Modified,
+            2 => OrderState::Cancelled,
+            3 => OrderState::Rejected,
+            4 => OrderState::Traded,
+            5 => OrderState::PartiallyTraded,
+            _ => panic!("Unknown order state"),
+        }
+    }
+}

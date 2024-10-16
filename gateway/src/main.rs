@@ -7,6 +7,7 @@ use oep::{
     header::{OepHeader, OEP_HEADER_SIZE},
     oep_decode,
     oep_message::MsgType,
+    sessioninfo::SessionInfo,
 };
 use polling::Events;
 use socket2::Protocol;
@@ -174,6 +175,36 @@ fn main() -> Result<()> {
                             let prev_buffer = p.recv_buffer.clone();
                             drop(cf); // we drop the connection_factory here, since we want to borrow it again down below
 
+                            ///
+                            /// Sends a COD message to the matching engine and deletes the socket
+                            /// from the connection_factory collection, essentially closing it and
+                            /// taking it out from the poller set
+                            ///
+                            macro_rules! disconnect_and_kill_orders {
+                                ($socket_key: ident) => {
+                                    if participant != 0 && session != 0 {
+                                        let mut buffer: Vec<u8> = Vec::with_capacity(32);
+                                        buffer.extend_from_slice(&[
+                                            MsgType::SessionNotification as u8,
+                                            0,
+                                            0,
+                                            0,
+                                        ]);
+                                        buffer.extend_from_slice(
+                                            &SessionInfo::new(participant, session, gateway_id)
+                                                .encode(),
+                                        );
+
+                                        connection_factory
+                                            .get_mut_session_by_client_fd(sender_raw_fd)
+                                            .unwrap()
+                                            .send(&buffer)
+                                            .unwrap();
+                                    }
+                                    connection_factory.delete_socket($socket_key);
+                                };
+                            }
+
                             let read_result = client_socket.borrow_mut().recv(&mut read_buffer);
                             if let Ok(r) = read_result {
                                 let vbuf = unsafe { assume_init(&read_buffer[..r]) };
@@ -192,7 +223,7 @@ fn main() -> Result<()> {
                                                 "Message was sent for a different gateway({})",
                                                 msg.get_gateway_id()
                                             );
-                                            connection_factory.delete_socket(k);
+                                            disconnect_and_kill_orders!(k);
                                             continue;
                                         }
                                         // check the message session_id if this was set
@@ -201,7 +232,7 @@ fn main() -> Result<()> {
                                                 "Message was sent for a different session({})",
                                                 msg.get_session_id()
                                             );
-                                            connection_factory.delete_socket(k);
+                                            disconnect_and_kill_orders!(k);
                                             continue;
                                         }
 
@@ -209,7 +240,7 @@ fn main() -> Result<()> {
                                             && msg.message_type() != MsgType::Login
                                         {
                                             eprintln!("Expected login, received something else. Closing client socket.");
-                                            connection_factory.delete_socket(k);
+                                            disconnect_and_kill_orders!(k);
                                         } else {
                                             let p = connection_factory
                                                 .get_mut_session_by_client_fd(k)
@@ -244,12 +275,12 @@ fn main() -> Result<()> {
                                                     } else if participant == 0 {
                                                         // login failed
                                                         eprintln!("Login failed");
-                                                        connection_factory.delete_socket(k);
+                                                        disconnect_and_kill_orders!(k);
                                                     }
                                                 }
                                                 Err(err) => {
                                                     println!("Invalid message from participant {participant}: {err}. Closing connection.");
-                                                    connection_factory.delete_socket(k);
+                                                    disconnect_and_kill_orders!(k);
                                                 }
                                             }
                                         }
@@ -257,18 +288,18 @@ fn main() -> Result<()> {
                                     Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                                         if r == 0 {
                                             println!("EOF, closing connection");
-                                            connection_factory.delete_socket(k);
+                                            disconnect_and_kill_orders!(k);
                                         }
                                         // otherwise no-op, we just cache what we have and try again when we have more data
                                     }
                                     Err(e) => {
                                         println!("Client sent an invalid command, closing its socket. Error: {e}");
-                                        connection_factory.delete_socket(k);
+                                        disconnect_and_kill_orders!(k);
                                     }
                                 }
                             } else {
                                 println!("Session {session} disconnected");
-                                connection_factory.delete_socket(k);
+                                disconnect_and_kill_orders!(k);
                             }
                         }
                         None => {

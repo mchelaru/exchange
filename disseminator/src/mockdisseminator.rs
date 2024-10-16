@@ -34,22 +34,22 @@ impl MockDisseminator {
 impl Disseminator for MockDisseminator {
     fn send_cancel_order(&self, order: &order::Order) -> Result<usize, std::io::Error> {
         self.cancels.borrow_mut().push(order.clone());
-        Ok(0)
+        Ok(1)
     }
 
     fn send_new_order(&self, order: &order::Order) -> Result<usize, std::io::Error> {
         self.new_orders.borrow_mut().push(order.clone());
-        Ok(0)
+        Ok(1)
     }
 
     fn send_trade(&self, trade: &Trade) -> Result<usize, std::io::Error> {
         self.trades.borrow_mut().push(trade.clone());
-        Ok(0)
+        Ok(1)
     }
 
     fn send_modify_order(&self, order: &Order) -> Result<usize, std::io::Error> {
         self.modifies.borrow_mut().push(order.clone());
-        Ok(0)
+        Ok(1)
     }
 
     fn send_instrument_info(&self, instrument: &Instrument) -> Result<usize, std::io::Error> {

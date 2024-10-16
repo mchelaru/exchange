@@ -245,7 +245,7 @@ impl Market {
         }
     }
 
-    pub fn cancel_order(&mut self, o: Order) -> OrderState {
+    pub fn cancel_order(&mut self, o: &Order) -> OrderState {
         assert_eq!(
             o.instrument.borrow().get_id(),
             self.instrument.borrow().get_id()
@@ -280,20 +280,50 @@ impl Market {
         }
     }
 
+    #[must_use]
+    /// cancels all the standing orders for a certain (participant, gateway, session) tuple
+    ///
+    /// Returns: a vector of tuples (order_id, book_id, side)
     pub fn cancel_all_orders_for_session(
         &mut self,
         participant: u64,
         gateway_id: u8,
         session_id: u32,
-    ) {
-        self.bids.retain(|o| {
-            o.participant != participant || o.gateway_id != gateway_id || o.session_id != session_id
-        });
-        self.asks.retain(|o| {
-            o.participant != participant || o.gateway_id != gateway_id || o.session_id != session_id
-        });
-        self.bids_ops += 3;
-        self.asks_ops += 3;
+    ) -> Vec<(u64, u64, Side)> {
+        let bid_matches: Vec<Order> = self
+            .bids
+            .iter()
+            .filter(|&o| {
+                o.participant == participant
+                    && o.gateway_id == gateway_id
+                    && o.session_id == session_id
+            })
+            .map(|o| o.clone())
+            .collect();
+        let ask_matches: Vec<Order> = self
+            .asks
+            .iter()
+            .filter(|&o| {
+                o.participant == participant
+                    && o.gateway_id == gateway_id
+                    && o.session_id == session_id
+            })
+            .map(|o| o.clone())
+            .collect();
+
+        for o in bid_matches.iter().chain(ask_matches.iter()) {
+            self.cancel_order(o);
+        }
+
+        self.bids_ops += bid_matches.len() as u32;
+        self.asks_ops += ask_matches.len() as u32;
+
+        // return both matching bids and asks
+        bid_matches
+            .iter()
+            .chain(ask_matches.iter())
+            .map(|o| (o.get_id(), o.instrument.borrow().get_id(), o.side.into()))
+            .collect()
     }
 
     pub fn generate_bids(&self) -> Vec<&Order> {
@@ -1114,7 +1144,7 @@ mod test {
         target.set_state_trading();
 
         assert_eq!(OrderState::Inserted, target.add_order(o1.clone()).0);
-        assert_eq!(OrderState::Rejected, target.cancel_order(o1));
+        assert_eq!(OrderState::Rejected, target.cancel_order(&o1));
     }
 
     #[test]
@@ -1141,7 +1171,7 @@ mod test {
 
         assert_eq!(OrderState::Inserted, target.add_order(o1.clone()).0);
         o1.set_id(target.get_order_id());
-        assert_eq!(OrderState::Cancelled, target.cancel_order(o1));
+        assert_eq!(OrderState::Cancelled, target.cancel_order(&o1));
     }
 
     #[test]
@@ -1169,7 +1199,7 @@ mod test {
         assert_eq!(OrderState::Inserted, target.add_order(o1.clone()).0);
         o1.set_id(target.get_order_id());
         o1.side = Side::Ask;
-        assert_eq!(OrderState::Rejected, target.cancel_order(o1));
+        assert_eq!(OrderState::Rejected, target.cancel_order(&o1));
     }
 
     #[test]
@@ -1196,7 +1226,7 @@ mod test {
 
         assert_eq!(OrderState::Inserted, target.add_order(o1.clone()).0);
         o1.set_id(target.get_order_id());
-        assert_eq!(OrderState::Cancelled, target.cancel_order(o1));
+        assert_eq!(OrderState::Cancelled, target.cancel_order(&o1));
         assert_eq!(1, disseminator.borrow().new_orders.borrow().len());
         assert_eq!(1, disseminator.borrow().cancels.borrow().len());
     }
@@ -1602,7 +1632,8 @@ mod test {
         assert_eq!(2, target.generate_asks().len());
 
         // Cancel all orders for participant 1000, gateway 100, session 2000
-        target.cancel_all_orders_for_session(1000, 100, 2000);
+        let r = target.cancel_all_orders_for_session(1000, 100, 2000);
+        assert_eq!(2, r.len());
 
         // Verify state after cancellation
         let bids = target.generate_bids();
@@ -1620,7 +1651,7 @@ mod test {
         assert_eq!(400, asks[1].quantity);
 
         // Verify operation counters
-        assert_eq!(5, target.bids_ops);
-        assert_eq!(5, target.asks_ops);
+        assert_eq!(6, target.bids_ops);
+        assert_eq!(2, target.asks_ops);
     }
 }

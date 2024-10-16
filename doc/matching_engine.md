@@ -39,4 +39,14 @@ The original message is the message that was sent by the participant to the gate
 | 0 | New Order |
 | 1 | Modify |
 | 2 | Cancel |
+| 6 | Session notification (see below) |
 
+### Session notification
+
+This message is sent in order to notify the matching engine about a certain issue on the session - usually meaning that the client disconnected. As a result, the matching engine kills all the orders of that certain participant/session pair. It has the following format:
+
+```
+| Msg Type (1) | Padding (3) | Participant (8) | Session (4) | Gateway (1) |
+```
+
+Msg Type = Fixed value, 6

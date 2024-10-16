@@ -6,7 +6,7 @@ use oep::{
     execution_report::ExecutionReport,
     modify::{Modify, MODIFY_SIZE},
     neworder::{NewOrder, NEWORDER_SIZE},
-    oep_message::OepMessage,
+    oep_message::{MsgType, OepMessage},
     sessioninfo::{SessionInfo, SESSIONINFO_SIZE},
 };
 use order::{Order, OrderState};
@@ -22,8 +22,8 @@ static HEADER_SIZE: usize = 4;
 
 #[must_use]
 pub fn decode_message(buffer: &[u8]) -> Result<(MessageWrapper, u64)> {
-    match buffer[0] {
-        0 => {
+    match (buffer[0] as u16).into() {
+        MsgType::NewOrder => {
             assert_eq!(HEADER_SIZE + NEWORDER_SIZE, buffer.len());
             let o = NewOrder::decode(
                 buffer[HEADER_SIZE..HEADER_SIZE + NEWORDER_SIZE]
@@ -34,7 +34,7 @@ pub fn decode_message(buffer: &[u8]) -> Result<(MessageWrapper, u64)> {
             let instrument = o.book_id;
             Ok((MessageWrapper::NewOrder(o), instrument))
         }
-        1 => {
+        MsgType::Modify => {
             assert_eq!(HEADER_SIZE + MODIFY_SIZE, buffer.len());
             let o = Modify::decode(
                 buffer[HEADER_SIZE..HEADER_SIZE + MODIFY_SIZE]
@@ -45,7 +45,7 @@ pub fn decode_message(buffer: &[u8]) -> Result<(MessageWrapper, u64)> {
             let instrument = o.book_id;
             Ok((MessageWrapper::Modify(o), instrument))
         }
-        2 => {
+        MsgType::Cancel => {
             assert_eq!(HEADER_SIZE + CANCEL_SIZE, buffer.len());
             let o = Cancel::decode(
                 buffer[HEADER_SIZE..HEADER_SIZE + CANCEL_SIZE]
@@ -56,7 +56,7 @@ pub fn decode_message(buffer: &[u8]) -> Result<(MessageWrapper, u64)> {
             let instrument = o.book_id;
             Ok((MessageWrapper::Cancel(o), instrument))
         }
-        3 => {
+        MsgType::SessionNotification => {
             assert_eq!(HEADER_SIZE + SESSIONINFO_SIZE, buffer.len());
             let o = SessionInfo::decode(
                 buffer[HEADER_SIZE..HEADER_SIZE + SESSIONINFO_SIZE]
@@ -66,7 +66,7 @@ pub fn decode_message(buffer: &[u8]) -> Result<(MessageWrapper, u64)> {
             .expect("decoding kill session");
             Ok((MessageWrapper::KillSession(o), 0))
         }
-        k => bail!("Invalid message type {k}"),
+        _ => bail!("Invalid message type: {:?}", buffer[0] as u16),
     }
 }
 
@@ -112,15 +112,16 @@ pub fn decode_message(buffer: &[u8]) -> Result<(MessageWrapper, u64)> {
 ///         gateway_id: 15,
 ///         session_id: 2,
 ///     });
-/// let execution_report = process_message(&mut market, new_order);
-/// assert_eq!(execution_report.state, OrderState::Inserted.into());
+/// let execution_reports = process_message(&mut market, new_order);
+/// assert_eq!(1, execution_reports.len());
+/// assert_eq!(execution_reports[0].state, OrderState::Inserted.into());
 /// ```
 ///
-pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionReport {
+pub fn process_message(market: &mut Market, msg: MessageWrapper) -> Vec<ExecutionReport> {
     match msg {
         MessageWrapper::NewOrder(m) => {
             if market.get_instrument().borrow().get_id() != m.book_id || m.get_participant() == 0 {
-                return ExecutionReport {
+                return vec![ExecutionReport {
                     participant: m.participant,
                     order_id: m.client_order_id,
                     submitted_order_id: m.client_order_id,
@@ -132,7 +133,7 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
                     state: OrderState::Rejected.into(),
                     gateway_id: m.gateway_id,
                     session_id: m.session_id,
-                };
+                }];
             }
 
             let o = Order::new(
@@ -147,7 +148,7 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
             );
             let (state, id) = market.add_order(o);
             // publish back the execution report
-            ExecutionReport {
+            vec![ExecutionReport {
                 participant: m.participant,
                 order_id: id,
                 submitted_order_id: m.client_order_id,
@@ -159,11 +160,11 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
                 state: state.into(),
                 gateway_id: m.gateway_id,
                 session_id: m.session_id,
-            }
+            }]
         }
         MessageWrapper::Modify(m) => {
             if market.get_instrument().borrow().get_id() != m.book_id || m.get_participant() == 0 {
-                return ExecutionReport {
+                return vec![ExecutionReport {
                     participant: m.participant,
                     order_id: m.order_id,
                     submitted_order_id: m.order_id,
@@ -175,7 +176,7 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
                     state: OrderState::Rejected.into(),
                     gateway_id: m.gateway_id,
                     session_id: m.session_id,
-                };
+                }];
             }
 
             let mut o = Order::new(
@@ -190,7 +191,7 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
             );
             o.set_id(m.order_id);
             let (state, id) = market.modify_order(o);
-            ExecutionReport {
+            vec![ExecutionReport {
                 participant: m.participant,
                 order_id: id,
                 submitted_order_id: m.order_id,
@@ -202,11 +203,11 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
                 state: state.into(),
                 gateway_id: m.gateway_id,
                 session_id: m.session_id,
-            }
+            }]
         }
         MessageWrapper::Cancel(m) => {
             if market.get_instrument().borrow().get_id() != m.book_id || m.get_participant() == 0 {
-                return ExecutionReport {
+                return vec![ExecutionReport {
                     participant: m.participant,
                     order_id: m.order_id,
                     submitted_order_id: m.order_id,
@@ -218,7 +219,7 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
                     state: OrderState::Rejected.into(),
                     gateway_id: m.gateway_id,
                     session_id: m.session_id,
-                };
+                }];
             }
 
             let mut o = Order::new(
@@ -232,8 +233,8 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
                 m.get_session_id(),
             );
             o.set_id(m.order_id);
-            let state = market.cancel_order(o);
-            ExecutionReport {
+            let state = market.cancel_order(&o);
+            vec![ExecutionReport {
                 participant: m.participant,
                 order_id: m.order_id,
                 submitted_order_id: m.order_id,
@@ -245,9 +246,32 @@ pub fn process_message(market: &mut Market, msg: MessageWrapper) -> ExecutionRep
                 state: state.into(),
                 gateway_id: m.gateway_id,
                 session_id: m.session_id,
-            }
+            }]
         }
-        MessageWrapper::KillSession(_session_info) => todo!(),
+        MessageWrapper::KillSession(m) => {
+            let v = market.cancel_all_orders_for_session(
+                m.get_participant(),
+                m.get_gateway_id(),
+                m.get_session_id(),
+            );
+            let mut r = Vec::with_capacity(v.len());
+            for i in v {
+                r.push(ExecutionReport {
+                    participant: m.get_participant(),
+                    order_id: i.0,
+                    submitted_order_id: i.0,
+                    book: i.1,
+                    quantity: 0,
+                    price: 0,
+                    flags: 0,
+                    side: i.2.into(),
+                    state: OrderState::Cancelled.into(),
+                    session_id: m.get_session_id(),
+                    gateway_id: m.get_gateway_id(),
+                });
+            }
+            r
+        }
     }
 }
 
@@ -299,7 +323,9 @@ mod test {
             session_id: DEFAULT_SESSION_ID,
         });
 
-        process_message(market, new_order)
+        let r = process_message(market, new_order);
+        assert_eq!(1, r.len());
+        r[0]
     }
 
     #[test]
@@ -336,7 +362,9 @@ mod test {
             side: Side::Ask.into(),
         });
 
-        let ereport = process_message(&mut market, modify_order);
+        let ereports = process_message(&mut market, modify_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(2, ereport.get_order_id());
         assert_eq!(15, ereport.get_quantity());
@@ -362,7 +390,9 @@ mod test {
             side: Side::Ask.into(),
         });
 
-        let ereport = process_message(&mut market, modify_order);
+        let ereports = process_message(&mut market, modify_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(0, ereport.get_order_id());
         assert_eq!(ereport.state, OrderState::Rejected.into());
@@ -384,7 +414,7 @@ mod test {
         });
 
         assert_eq!(
-            process_message(&mut market, new_order).state,
+            process_message(&mut market, new_order)[0].state,
             OrderState::Rejected.into()
         );
     }
@@ -407,7 +437,9 @@ mod test {
             side: Side::Ask.into(),
         });
 
-        let ereport = process_message(&mut market, modify_order);
+        let ereports = process_message(&mut market, modify_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(0, ereport.get_order_id());
         assert_eq!(ereport.state, OrderState::Rejected.into());
@@ -431,7 +463,9 @@ mod test {
             side: Side::Ask.into(),
         });
 
-        let ereport = process_message(&mut market, modify_order);
+        let ereports = process_message(&mut market, modify_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(order_id, ereport.get_order_id());
         assert_eq!(ereport.state, OrderState::Rejected.into());
@@ -455,7 +489,9 @@ mod test {
             side: Side::Ask.into(),
         });
 
-        let ereport = process_message(&mut market, modify_order);
+        let ereports = process_message(&mut market, modify_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(0, ereport.get_order_id());
         assert_eq!(ereport.state, OrderState::Rejected.into());
@@ -479,7 +515,9 @@ mod test {
             side: Side::Ask.into(),
         });
 
-        let ereport = process_message(&mut market, modify_order);
+        let ereports = process_message(&mut market, modify_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(0, ereport.get_order_id());
         assert_eq!(ereport.state, OrderState::Rejected.into());
@@ -503,7 +541,9 @@ mod test {
             side: Side::Bid.into(),
         });
 
-        let ereport = process_message(&mut market, modify_order);
+        let ereports = process_message(&mut market, modify_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(0, ereport.get_order_id());
         assert_eq!(ereport.state, OrderState::Rejected.into());
@@ -525,7 +565,9 @@ mod test {
             session_id: DEFAULT_SESSION_ID,
         });
 
-        let ereport = process_message(&mut market, cancel_order);
+        let ereports = process_message(&mut market, cancel_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(ereport.state, OrderState::Cancelled.into());
     }
@@ -546,7 +588,9 @@ mod test {
             session_id: DEFAULT_SESSION_ID,
         });
 
-        let ereport = process_message(&mut market, cancel_order);
+        let ereports = process_message(&mut market, cancel_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(ereport.state, OrderState::Rejected.into());
     }
@@ -567,7 +611,9 @@ mod test {
             session_id: DEFAULT_SESSION_ID,
         });
 
-        let ereport = process_message(&mut market, cancel_order);
+        let ereports = process_message(&mut market, cancel_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(ereport.state, OrderState::Rejected.into());
     }
@@ -588,7 +634,9 @@ mod test {
             session_id: DEFAULT_SESSION_ID,
         });
 
-        let ereport = process_message(&mut market, cancel_order);
+        let ereports = process_message(&mut market, cancel_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(ereport.state, OrderState::Rejected.into());
     }
@@ -609,7 +657,9 @@ mod test {
             session_id: DEFAULT_SESSION_ID,
         });
 
-        let ereport = process_message(&mut market, cancel_order);
+        let ereports = process_message(&mut market, cancel_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(ereport.state, OrderState::Rejected.into());
     }
@@ -630,7 +680,9 @@ mod test {
             session_id: DEFAULT_SESSION_ID,
         });
 
-        let ereport = process_message(&mut market, cancel_order);
+        let ereports = process_message(&mut market, cancel_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(ereport.state, OrderState::Rejected.into());
     }
@@ -651,7 +703,9 @@ mod test {
             session_id: DEFAULT_SESSION_ID + 5,
         });
 
-        let ereport = process_message(&mut market, cancel_order);
+        let ereports = process_message(&mut market, cancel_order);
+        assert_eq!(1, ereports.len());
+        let ereport = ereports[0];
 
         assert_eq!(ereport.state, OrderState::Rejected.into());
     }

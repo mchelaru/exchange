@@ -50,7 +50,6 @@ impl ConnectionFactory {
     }
 
     /// get the connected session from the session id
-    #[allow(unused)]
     pub fn get_session_by_session_id(&self, session_id: u32) -> Option<&ConnectedSession<Socket>> {
         match self.session_id_to_client_fd.get(&session_id) {
             Some(client_fd) => self.client_fd_to_session.get(&client_fd),

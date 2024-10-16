@@ -15,6 +15,16 @@ pub struct SessionInfo {
     gateway_id: u8,
 }
 
+impl SessionInfo {
+    pub fn new(participant: u64, session_id: u32, gateway_id: u8) -> Self {
+        Self {
+            participant: participant,
+            session_id: session_id,
+            gateway_id: gateway_id,
+        }
+    }
+}
+
 pub const SESSIONINFO_SIZE: usize = std::mem::size_of::<SessionInfo>();
 
 impl Decoder<SESSIONINFO_SIZE> for SessionInfo {
@@ -29,7 +39,7 @@ impl Decoder<SESSIONINFO_SIZE> for SessionInfo {
 
 impl OepMessage for SessionInfo {
     fn message_type(&self) -> MsgType {
-        MsgType::SessionInfo
+        MsgType::SessionNotification
     }
     fn as_any(&self) -> &dyn std::any::Any {
         self
